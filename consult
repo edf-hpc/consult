@@ -1,0 +1,270 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+#
+#  Copyright (C) 2016 EDF SA
+#
+#  This file is part of Consult
+#
+#  This software is governed by the CeCILL license under French law and
+#  abiding by the rules of distribution of free software. You can use,
+#  modify and/ or redistribute the software under the terms of the CeCILL
+#  license as circulated by CEA, CNRS and INRIA at the following URL
+#  "http://www.cecill.info".
+#
+#  As a counterpart to the access to the source code and rights to copy,
+#  modify and redistribute granted by the license, users are provided only
+#  with a limited warranty and the software's author, the holder of the
+#  economic rights, and the successive licensors have only limited
+#  liability.
+#
+#  In this respect, the user's attention is drawn to the risks associated
+#  with loading, using, modifying and/or developing or reproducing the
+#  software by the user in light of its specific status of free software,
+#  that may mean that it is complicated to manipulate, and that also
+#  therefore means that it is reserved for developers and experienced
+#  professionals having in-depth computer knowledge. Users are therefore
+#  encouraged to load and test the software's suitability as regards their
+#  requirements in conditions enabling the security of their systems and/or
+#  data to be ensured and, more generally, to use and operate it in the
+#  same conditions as regards security.
+#
+#  The fact that you are presently reading this means that you have had
+#  knowledge of the CeCILL license and that you accept its terms.
+
+
+import sys
+import argparse
+import logging
+logger = logging.getLogger(__name__)
+
+import json
+import requests
+
+
+class AppConf(object):
+
+    def __init__(self):
+
+        self.debug = False
+
+conf = AppConf()
+
+
+class ConsulAPI(object):
+
+    URI_NODES = "/v1/catalog/nodes"
+    URI_LEADER = "/v1/status/leader"
+    URL_HEALTH_NODE = "/v1/health/node/"
+
+    def __init__(self, server="http://localhost:8500"):
+        self.server = server
+
+    def get_json(self, url):
+        logger.debug("GET %s", url)
+        req = requests.get(url)
+        if req.status_code != 200:
+            logger.error("GET %s returned %d status code",
+                         url,
+                         req.status_code)
+            sys.exit(1)
+        return json.loads(req.content)
+
+    def nodes(self):
+
+        return self.get_json(self.server + ConsulAPI.URI_NODES)
+
+    def leader(self):
+
+        return self.get_json(self.server + ConsulAPI.URI_LEADER)
+
+    def node_checks(self, nodename):
+
+        return self.get_json(self.server +
+                             ConsulAPI.URL_HEALTH_NODE +
+                             nodename)
+
+
+class Leader(object):
+
+    def __init__(self, data):
+
+        elems = data.split(':')
+        self.address = elems[0]
+        self.port = elems[1]
+
+
+class NodeCheck(object):
+
+    def __init__(self, data):
+
+        self.output = data['Output'].strip()
+        self.status = data['Status']
+        self.checkid = data['CheckID']
+
+    @property
+    def isnodecheck(self):
+        return self.checkid == 'serfHealth'
+
+    @property
+    def service_name(self):
+        return self.checkid.split(':')[1]
+
+
+class Node(object):
+
+    def __init__(self, data, leader):
+
+        self.name = data['Node']
+        self.address = data['Address']
+        self.isleader = self.address == leader.address
+        self.check = None
+        self.services = []
+
+
+class NodeService(object):
+
+    def __init__(self, name, status, output):
+
+        self.name = name
+        self.status = status
+        self.output = output
+
+    def output_too_long(self):
+        return len(self.output) > 100
+
+
+class Colorizer(object):
+
+    BLACK, RED, GREEN, YELLOW, BLUE, MAGENTA, CYAN, WHITE = range(8)
+
+    @staticmethod
+    def colorize(string, color, bold=False):
+        s_bold = ''
+        if bold:
+            s_bold = '1;'
+        return("\x1b[" + s_bold + "%dm" % (30+color) + string + "\x1b[0m")
+
+    @staticmethod
+    def yellow(string, bold=False):
+        return Colorizer.colorize(string, Colorizer.YELLOW, bold)
+
+    @staticmethod
+    def green(string, bold=False):
+        return Colorizer.colorize(string, Colorizer.GREEN, bold)
+
+    @staticmethod
+    def blue(string, bold=False):
+        return Colorizer.colorize(string, Colorizer.BLUE, bold)
+
+    @staticmethod
+    def red(string, bold=False):
+        return Colorizer.colorize(string, Colorizer.RED, bold)
+
+
+def colorize_status(status, bold=False):
+    if status in ['passing']:
+        return Colorizer.green(status, bold)
+    elif status in ['unknown', 'unset']:
+        return Colorizer.blue(status, bold)
+    elif status in ['warning']:
+        return Colorizer.yellow(status, bold)
+    elif status in ['critical']:
+        return Colorizer.red(status, bold)
+    else:
+        return status
+
+
+def parse_args():
+
+    global conf
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-d', '--debug',
+                        help='Enable debug mode',
+                        action='store_true')
+    args = parser.parse_args()
+    if args.debug:
+        conf.debug = True
+
+
+def setup_logger():
+
+    global logger
+    if conf.debug is True:
+        logger.setLevel(logging.DEBUG)
+    else:
+        logger.setLevel(logging.INFO)
+    handler = logging.StreamHandler()
+    formatter = logging.Formatter('%(levelname)s: %(message)s')
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+
+
+def main():
+
+    #
+    # App global initialization
+    #
+
+    global conf
+    conf = AppConf()
+
+    parse_args()
+    setup_logger()
+
+    #
+    # Fill data structures with API data
+    #
+
+    api = ConsulAPI()
+    leader = Leader(api.leader())
+
+    nodes = []
+    nodes_data = api.nodes()
+    for data in nodes_data:
+        nodes.append(Node(data, leader))
+
+    for node in nodes:
+        node_checks = [NodeCheck(data) for data in api.node_checks(node.name)]
+        for check in node_checks:
+            if check.isnodecheck:
+                node.check = NodeService('self', check.status, check.output)
+            else:
+                service = NodeService(check.service_name,
+                                      check.status,
+                                      check.output)
+                node.services.append(service)
+
+    #
+    # Report cluster status
+    #
+    for node in nodes:
+
+        s_leader = ''
+        if node.isleader:
+            s_leader = Colorizer.yellow(u" → leader ←", bold=True)
+        s_name = "%s (%s)" % (node.name, node.address)
+        print("{nodename:20s}{status}{leader} "
+              .format(nodename=s_name,
+                      status=colorize_status(node.check.status, bold=True),
+                      leader=s_leader.encode('utf-8')))
+
+        for service in node.services:
+            if len(service.output) == 0:
+                s_output = u"∅"
+            elif service.output_too_long():
+                s_output = "[output snipped (%d)]" % (len(service.output))
+            else:
+                s_output = u"«" + service.output + u"»"
+            s_service = "%s:" % (service.name)
+            if node.check.status == 'critical':
+                s_status = Colorizer.red(u"∅")
+                s_output = ""
+            else:
+                s_status = colorize_status(service.status)
+            print("  - {service:16s}{status:18s} {output} "
+                  .format(service=s_service,
+                          status=s_status.encode('utf-8'),
+                          output=s_output.encode('utf-8')))
+
+if __name__ == "__main__":
+    main()
