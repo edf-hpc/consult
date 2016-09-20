@@ -15,7 +15,7 @@ Depends:
  ${shlibs:Depends},
  ${misc:Depends},
  python,
- ptyhon-requests
+ python-requests
 Suggests:
  consul
 Description: Utility to monitor state of a Consul cluster
