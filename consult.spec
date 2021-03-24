@@ -2,7 +2,7 @@
 
 Summary: Utility to monitor state of a Consul cluster
 Name: consult
-Version: 0.1
+Version: 0.2
 Release: 1%{?dist}.edf
 License: CeCILL
 Group: Applications/System
@@ -31,5 +31,7 @@ install -m 755 consult %{buildroot}/usr/bin
 /usr/bin/consult
 
 %changelog
+* Wed Mar 24 2021 Kwame Amedodji <kwame-externe.amedodji@edf.fr> 0.2-1el8.edf
+- first python3 working release
 * Fri Sep 18 2020 Pierre Trespeuch <pierre-externe.trespeuch@edf.fr> 0.1-1el8.edf
 - Initial RPM release
