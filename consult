@@ -107,7 +107,7 @@ class NodeCheck(object):
 
     @property
     def service_name(self):
-        return self.checkid.split(':')[1]
+        return self.checkid
 
 
 class Node(object):
@@ -246,7 +246,7 @@ def main():
         print("{nodename:20s}{status}{leader} "
               .format(nodename=s_name,
                       status=colorize_status(node.check.status, bold=True),
-                      leader=s_leader.encode('utf-8')))
+                      leader=s_leader.encode('utf-8').decode()))
 
         for service in node.services:
             if len(service.output) == 0:
@@ -261,10 +261,12 @@ def main():
                 s_output = ""
             else:
                 s_status = colorize_status(service.status)
+            _s_output = s_output.encode('utf-8').decode()
+            _s_status = s_status.encode('utf-8').decode()
             print("  - {service:16s}{status:18s} {output} "
                   .format(service=s_service,
-                          status=s_status.encode('utf-8'),
-                          output=s_output.encode('utf-8')))
+                          status=s_status.encode('utf-8').decode(),
+                          output=s_output.encode('utf-8').decode()))
 
 if __name__ == "__main__":
     main()
