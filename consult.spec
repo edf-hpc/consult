@@ -31,6 +31,8 @@ install -m 755 consult %{buildroot}/usr/bin
 /usr/bin/consult
 
 %changelog
+* Wed Mar 05 2025 Farid CHABANE <farid-externe.chabane@edf.fr> 0.2-1el9.edf
+- el9 RPM release
 * Wed Mar 24 2021 Kwame Amedodji <kwame-externe.amedodji@edf.fr> 0.2-1el8.edf
 - first python3 working release
 * Fri Sep 18 2020 Pierre Trespeuch <pierre-externe.trespeuch@edf.fr> 0.1-1el8.edf
